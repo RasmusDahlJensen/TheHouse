@@ -50,7 +50,7 @@ module.exports = {
             const sorted = getSortedPlayers();
 
             return sorted.map((p, i) => {
-                const movement = p.previousPosition === null
+                const movement = p.roll === null
                     ? '🔸'
                     : p.previousPosition < p.position
                         ? '📉'
