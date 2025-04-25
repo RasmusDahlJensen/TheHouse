@@ -38,7 +38,6 @@ module.exports = {
         table.removePlayer(target.user.id);
         tableManager.unregisterUser(target.user.id);
 
-        // ✅ Prevent bot from becoming host
         if (wasHost) {
             const nextRealPlayer = table.players.find(p => !p.isBot);
             if (nextRealPlayer) {
