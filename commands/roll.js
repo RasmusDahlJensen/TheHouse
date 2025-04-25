@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const tableManager = require('../models/TableManager');
 const { getContext } = require('../utils/context');
+const { updateSession, getSessionLeaderboard } = require('../data/sessionLeaderboard');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -10,6 +11,8 @@ module.exports = {
     async execute(interaction) {
         const { user, displayName } = getContext(interaction);
         const table = tableManager.getTableByUser(user.id);
+        const pot = table.players.length * table.wager;
+        const winnings = pot - table.wager;
 
         if (!table) {
             return interaction.reply({ content: 'You are not in a table.', flags: 64 });
@@ -47,14 +50,11 @@ module.exports = {
             const sorted = getSortedPlayers();
 
             return sorted.map((p, i) => {
-                const movement =
-                    p.previousPosition === null
-                        ? '🔸'
-                        : p.previousPosition > p.position
-                            ? '📈'
-                            : p.previousPosition < p.position
-                                ? '📉'
-                                : '➔';
+                const movement = p.previousPosition === null
+                    ? '🔸'
+                    : p.previousPosition < p.position
+                        ? '📉'
+                        : '➔';
 
                 const status = p.roll === null ? '⌛' : `🎲 ${p.roll}`;
                 return `**${i + 1}.** ${movement} ${p.user.username} ${status}`;
@@ -87,10 +87,26 @@ module.exports = {
         }
 
         const finalWinner = getSortedPlayers()[0];
+        // Update session net winnings/losses
+        for (const player of table.players) {
+            const net = player.user.id === finalWinner.user.id
+                ? winnings
+                : -table.wager;
+
+            updateSession(player.user.id, player.user.username, net);
+        }
+
+        const sessionSummary = getSessionLeaderboard()
+            .map(p => {
+                const prefix = p.net > 0 ? '+' : '';
+                return `${prefix}${p.net.toLocaleString()} – ${p.name}`;
+            })
+            .join('\n');
 
         await msg.edit({
             content:
-                `🎲 Final Results for **${table.name}**\n\n${renderList()}\n\n🏆 **${finalWinner.user.username} wins with a ${finalWinner.roll}!**`
+                `🎲 Final Results for **${table.name}**\n\n${renderList()}\n\n🏆 🏆 **${finalWinner.user.username}** wins with a ${finalWinner.roll} and takes home 💰 ${winnings.toLocaleString()} gold!\n\n💼 **Session Leaderboard:**\n${sessionSummary}`
         });
+
     }
 };

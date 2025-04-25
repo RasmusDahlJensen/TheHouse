@@ -36,5 +36,5 @@ the-house-bot/
 | `/leavetable`         | Leaves current table |
 | `/listtables`         | Lists all active tables |
 | `/addbot`             | Host-only: adds a debug bot to current table |
-| `/kickbot <name>`     | Host-only: removes a bot from the table |
+| `/kickbots`           | Host-only: removes all bots  from the table |
 

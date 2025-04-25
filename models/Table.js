@@ -1,11 +1,12 @@
 class Table {
-    constructor(name, wager, hostUserId) {
+    constructor(name, wager = 5000, hostUserId) {
         this.name = name;
         this.wager = wager;
         this.hostUserId = hostUserId;
         this.players = [];
         this.createdAt = Date.now();
     }
+
 
     addPlayer(user, isBot = false) {
         if (this.players.some(p => p.user.id === user.id)) return false;

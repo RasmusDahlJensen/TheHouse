@@ -6,10 +6,11 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('starttable')
         .setDescription('Start a new table with a wager amount')
-        .addStringOption(option =>
+        .addIntegerOption(option =>
             option.setName('wager')
-                .setDescription('Amount being wagered (e.g., 500k)')
+                .setDescription('Wager amount (e.g., 5000)')
                 .setRequired(true)
+                .setMinValue(1)
         ),
 
     /**
@@ -23,7 +24,7 @@ module.exports = {
             return interaction.reply({ content: 'You are already in a table. Leave it before starting a new one.', ephemeral: true });
         }
 
-        const wager = interaction.options.getString('wager');
+        const wager = interaction.options.getInteger('wager');
 
         // Create and register the new table
         const table = tableManager.createTable(wager, user);
