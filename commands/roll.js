@@ -50,8 +50,6 @@ module.exports = {
             return;
         }
 
-        // All ready, proceed to ROLLING 🎲
-
         // Reset for rolling
         table.players.forEach(p => {
             p.roll = null;
