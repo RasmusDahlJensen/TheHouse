@@ -6,36 +6,59 @@ const { updateSession, getSessionLeaderboard } = require('../data/sessionLeaderb
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('roll')
-        .setDescription('Start rolling for your table (host only)'),
+        .setDescription('Mark yourself ready for rolling'),
 
     async execute(interaction) {
         const { user, displayName } = getContext(interaction);
         const table = tableManager.getTableByUser(user.id);
-        const pot = table.players.length * table.wager;
-        const winnings = pot - table.wager;
 
         if (!table) {
             return interaction.reply({ content: 'You are not in a table.', flags: 64 });
         }
 
-        if (table.hostUserId !== user.id) {
-            return interaction.reply({ content: 'Only the host can start the roll.', flags: 64 });
-        }
-
         if (table.players.length < 2) {
-            return interaction.reply({ content: 'You need at least 2 players to start a roll.', flags: 64 });
+            return interaction.reply({ content: 'You need at least 2 players to roll.', flags: 64 });
         }
 
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        // Reset state
+        // Initialize if missing
+        if (!table.readyPlayers) {
+            table.readyPlayers = new Set();
+        }
+
+        // Mark player as ready
+        table.readyPlayers.add(user.id);
+
+        const allReady = table.players.every(p => table.readyPlayers.has(p.user.id));
+
+        const renderReadyList = () => {
+            return table.players.map((p, i) => {
+                const isReady = table.readyPlayers.has(p.user.id);
+                return `**${i + 1}.** ${isReady ? '✅' : '🔸'} ${p.user.username}`;
+            }).join('\n');
+        };
+
+        const pot = table.players.length * table.wager;
+        const winnings = pot - table.wager;
+
+        if (!allReady) {
+            await interaction.reply({
+                content: `🕓 Waiting for players to be ready at **${table.name}**:\n\n${renderReadyList()}`,
+                fetchReply: false
+            });
+            return;
+        }
+
+        // All ready, proceed to ROLLING 🎲
+
+        // Reset for rolling
         table.players.forEach(p => {
             p.roll = null;
             p.position = null;
             p.previousPosition = null;
         });
 
-        // Utility to get sorted players
         const getSortedPlayers = () => {
             return table.players.slice().sort((a, b) => {
                 if (a.roll === null && b.roll === null) return 0;
@@ -45,24 +68,21 @@ module.exports = {
             });
         };
 
-        // Utility to render current state
-        const renderList = () => {
+        const renderRollList = () => {
             const sorted = getSortedPlayers();
-
             return sorted.map((p, i) => {
                 const movement = p.roll === null
                     ? '🔸'
                     : p.previousPosition < p.position
                         ? '📉'
                         : '➔';
-
                 const status = p.roll === null ? '⌛' : `🎲 ${p.roll}`;
                 return `**${i + 1}.** ${movement} ${p.user.username} ${status}`;
             }).join('\n');
         };
 
         const msg = await interaction.reply({
-            content: `🎲 Rolling for **${table.name}**...\n\n${renderList()}`,
+            content: `🎲 Everyone is ready! Rolling for **${table.name}**...\n\n${renderRollList()}`,
             fetchReply: true
         });
 
@@ -80,13 +100,14 @@ module.exports = {
             });
 
             await msg.edit({
-                content: `🎲 Rolling for **${table.name}**...\n\n${renderList()}`
+                content: `🎲 Rolling for **${table.name}**...\n\n${renderRollList()}`
             });
 
             await delay(1500);
         }
 
         const finalWinner = getSortedPlayers()[0];
+
         // Update session net winnings/losses
         for (const player of table.players) {
             const net = player.user.id === finalWinner.user.id
@@ -105,8 +126,10 @@ module.exports = {
 
         await msg.edit({
             content:
-                `🎲 Final Results for **${table.name}**\n\n${renderList()}\n\n🏆 🏆 **${finalWinner.user.username}** wins with a ${finalWinner.roll} and takes home 💰 ${winnings.toLocaleString()} gold!\n\n💼 **Session Leaderboard:**\n${sessionSummary}`
+                `🎲 Final Results for **${table.name}**\n\n${renderRollList()}\n\n🏆 **${finalWinner.user.username}** wins with a ${finalWinner.roll} and takes home 💰 ${winnings.toLocaleString()} gold!\n\n💼 **Session Leaderboard:**\n${sessionSummary}`
         });
 
+        // Clear ready status after round ends
+        table.readyPlayers.clear();
     }
 };
