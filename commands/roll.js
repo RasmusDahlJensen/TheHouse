@@ -2,6 +2,8 @@ const { SlashCommandBuilder } = require('discord.js');
 const tableManager = require('../models/TableManager');
 const { getContext } = require('../utils/context');
 const { updateSession, getSessionLeaderboard } = require('../data/sessionLeaderboard');
+const { updatePermanent } = require('../data/leaderboard');
+
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -113,6 +115,7 @@ module.exports = {
                 : -table.wager;
 
             updateSession(player.user.id, player.user.username, net);
+            updatePermanent(player.user.id, player.user.username, net);
         }
 
         const sessionSummary = getSessionLeaderboard()
