@@ -48,7 +48,7 @@ if (!fs.existsSync(filePath)) {
     fs.writeFileSync(filePath, '{}', 'utf8');
 }
 
-// Load leaderboard safely
+// Load leaderboard
 let leaderboard = {};
 
 try {
