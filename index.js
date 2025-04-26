@@ -11,17 +11,17 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-
-    const command = client.commands.get(interaction.commandName);
-    if (!command) return;
-
-    try {
-        await command.execute(interaction, client);
-    } catch (error) {
-        console.error(error);
-        await interaction.reply({ content: 'Something went wrong executing that command.', ephemeral: true });
+    if (interaction.isChatInputCommand()) {
+        const command = client.commands.get(interaction.commandName);
+        if (command) {
+            await command.execute(interaction);
+        }
+    }
+    else if (interaction.isButton()) {
+        const { handleButton } = require('./utils/buttonHandlers');
+        await handleButton(interaction);
     }
 });
+
 
 client.login(process.env.DISCORD_TOKEN);
