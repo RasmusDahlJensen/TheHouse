@@ -4,7 +4,6 @@ const { getContext } = require('../utils/context');
 const { updateSession, getSessionLeaderboard } = require('../data/sessionLeaderboard');
 const { updatePermanent } = require('../data/leaderboard');
 
-
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('roll')
@@ -24,7 +23,7 @@ module.exports = {
 
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        // Initialize if missing
+        // Initialize ready players if missing
         if (!table.readyPlayers) {
             table.readyPlayers = new Set();
         }
@@ -106,16 +105,29 @@ module.exports = {
             await delay(1500);
         }
 
-        const finalWinner = getSortedPlayers()[0];
+        // Determine winners
+        const sortedPlayers = getSortedPlayers();
+        const highestRoll = sortedPlayers[0].roll;
+        const topPlayers = sortedPlayers.filter(p => p.roll === highestRoll);
 
-        // Update session net winnings/losses
-        for (const player of table.players) {
-            const net = player.user.id === finalWinner.user.id
-                ? winnings
-                : -table.wager;
+        let resultMessage = '';
 
-            updateSession(player.user.id, player.user.username, net);
-            updatePermanent(player.user.id, player.user.username, net);
+        if (topPlayers.length > 1) {
+            resultMessage = `🤝 It's a draw between ${topPlayers.map(p => `**${p.user.username}**`).join(' and ')} with a roll of **${highestRoll}**!`;
+        } else {
+            const finalWinner = topPlayers[0];
+
+            resultMessage = `🏆 **${finalWinner.user.username}** wins with a ${finalWinner.roll} and takes home 💰 ${winnings.toLocaleString()} gold!`;
+
+            // Only update winnings if there is a clear winner
+            for (const player of table.players) {
+                const net = player.user.id === finalWinner.user.id
+                    ? winnings
+                    : -table.wager;
+
+                updateSession(player.user.id, player.user.username, net);
+                updatePermanent(player.user.id, player.user.username, net);
+            }
         }
 
         const sessionSummary = getSessionLeaderboard()
@@ -127,7 +139,7 @@ module.exports = {
 
         await msg.edit({
             content:
-                `🎲 Final Results for **${table.name}**\n\n${renderRollList()}\n\n🏆 **${finalWinner.user.username}** wins with a ${finalWinner.roll} and takes home 💰 ${winnings.toLocaleString()} gold!\n\n💼 **Session Leaderboard:**\n${sessionSummary}`
+                `🎲 Final Results for **${table.name}**\n\n${renderRollList()}\n\n${resultMessage}\n\n💼 **Session Leaderboard:**\n${sessionSummary}`
         });
 
         // Clear ready status after round ends
