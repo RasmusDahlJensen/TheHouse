@@ -3,7 +3,7 @@ const path = require('path');
 const { REST, Routes } = require('discord.js');
 
 /**
- * Loads and registers all slash commands
+ * Loads all slash commands and registers them with Discord API
  * @param {import('discord.js').Client} client 
  */
 async function loadCommands(client) {
@@ -19,28 +19,16 @@ async function loadCommands(client) {
     }
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    console.log('Registering commands:');
+    commands.forEach(cmd => console.log(`- /${cmd.name}`));
 
-    const clientId = process.env.CLIENT_ID;
-    const guildIdsRaw = process.env.GUILD_IDS;
 
     try {
-        if (guildIdsRaw) {
-            const guildIds = guildIdsRaw.split(',').map(id => id.trim());
-
-            for (const guildId of guildIds) {
-                await rest.put(
-                    Routes.applicationGuildCommands(clientId, guildId),
-                    { body: commands }
-                );
-                console.log(`✅ Registered commands for guild ${guildId}`);
-            }
-        } else {
-            await rest.put(
-                Routes.applicationCommands(clientId),
-                { body: commands }
-            );
-            console.log('✅ Registered GLOBAL commands');
-        }
+        await rest.put(
+            Routes.applicationGuildCommands(process.env.CLIENT_ID),
+            { body: commands }
+        );
+        console.log('✅ Slash commands registered.');
     } catch (error) {
         console.error('❌ Error registering commands:', error);
     }
