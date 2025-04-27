@@ -29,7 +29,7 @@ async function handleButton(interaction) {
         tableManager.registerUserToTable(user.id, table.name);
         await updateTableMessage(interaction, table);
         await interaction.reply({ content: `✅ You joined **${table.name}**!`, ephemeral: true });
-    }
+    } 
     else if (action === 'leave') {
         if (!alreadyInTable) {
             return interaction.reply({ content: '❌ You are not in this table.', ephemeral: true });
@@ -72,8 +72,7 @@ async function updateTableMessage(interaction, table) {
     const playersList = table.players.length > 0
         ? table.players.map(p => {
             const isReady = table.readyPlayers?.has(p.user.id);
-            const isHost = p.user.id === table.hostUserId;
-            return `${isReady ? '✅' : '🔸'} ${p.user.username}${isHost ? ' 👑 (host)' : ''}`;
+            return `${isReady ? '✅' : '🔸'} ${p.user.username}`;
         }).join('\n')
         : '*No players yet*';
 
@@ -83,31 +82,22 @@ async function updateTableMessage(interaction, table) {
         .setColor(0x00AE86)
         .setFooter({ text: `Host: ${table.players[0]?.user.username || 'None'}` });
 
-    const buttons = new ActionRowBuilder();
-    const alreadyInTable = table.players.some(p => p.user.id === interaction.user.id);
-
-    if (!alreadyInTable) {
-        buttons.addComponents(
-            new ButtonBuilder()
-                .setCustomId(`join-${table.name}`)
-                .setLabel('🎟️ Join Table')
-                .setStyle(ButtonStyle.Success)
-        );
-    } else {
-        buttons.addComponents(
-            new ButtonBuilder()
-                .setCustomId(`leave-${table.name}`)
-                .setLabel('🏃 Leave Table')
-                .setStyle(ButtonStyle.Danger),
-            new ButtonBuilder()
-                .setCustomId(`ready-${table.name}`)
-                .setLabel('✅ Ready Up')
-                .setStyle(ButtonStyle.Primary)
-        );
-    }
+    const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`join-${table.name}`)
+            .setLabel('🎟️ Join Table')
+            .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+            .setCustomId(`leave-${table.name}`)
+            .setLabel('🏃 Leave Table')
+            .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+            .setCustomId(`ready-${table.name}`)
+            .setLabel('✅ Ready Up')
+            .setStyle(ButtonStyle.Primary)
+    );
 
     await message.edit({ embeds: [embed], components: [buttons] });
 }
-
 
 module.exports = { handleButton };
