@@ -1,0 +1,42 @@
+const Table = require('./table');
+
+class TableManager {
+    constructor() {
+        this.tables = new Map(); // key: tableName, value: Table instance
+        this.userTableMap = new Map(); // key: userId, value: tableName
+        this.tableCounter = 1; // For auto-increment table names
+    }
+
+    getNextTableId() {
+        return this.tableCounter++;
+    }
+
+    createTable({ name, channelId, roleId, hostUserId, wager }) {
+        const table = new Table(name, channelId, roleId, hostUserId, wager);
+        this.tables.set(name, table);
+        return table;
+    }
+
+    getTableByName(name) {
+        return this.tables.get(name);
+    }
+
+    getTableByUser(userId) {
+        const tableName = this.userTableMap.get(userId);
+        return tableName ? this.tables.get(tableName) : null;
+    }
+
+    registerUserToTable(userId, tableName) {
+        this.userTableMap.set(userId, tableName);
+    }
+
+    unregisterUser(userId) {
+        this.userTableMap.delete(userId);
+    }
+
+    deleteTable(name) {
+        this.tables.delete(name);
+    }
+}
+
+module.exports = new TableManager();
