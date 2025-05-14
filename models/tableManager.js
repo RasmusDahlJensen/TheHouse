@@ -2,9 +2,9 @@ const Table = require('./table');
 
 class TableManager {
     constructor() {
-        this.tables = new Map(); // key: tableName, value: Table instance
-        this.userTableMap = new Map(); // key: userId, value: tableName
-        this.tableCounter = 1; // For auto-increment table names
+        this.tables = new Map()
+        this.userTableMap = new Map();
+        this.tableCounter = 1;
     }
 
     getNextTableId() {

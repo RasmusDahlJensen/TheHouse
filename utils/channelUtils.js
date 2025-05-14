@@ -1,7 +1,7 @@
 const { ChannelType, PermissionFlagsBits } = require('discord.js');
 const { createRole } = require('./roleUtils');
 
-const CATEGORY_ID = 'YOUR_CATEGORY_ID';
+const CATEGORY_ID = '1371858395648491654';
 
 /**
  * @param {import('discord.js').Guild} guild 

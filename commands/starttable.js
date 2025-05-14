@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { createTableChannelAndRole } = require('../utils/channelUtils');
-const tableManager = require('../models/TableManager');
+const tableManager = require('../models/tableManager');
 const { getContext } = require('../utils/context');
 
 module.exports = {
