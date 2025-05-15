@@ -37,6 +37,10 @@ class TableManager {
     deleteTable(name) {
         this.tables.delete(name);
     }
+
+    getAllTables(){
+        return Array.from(this.tables.values())
+    }
 }
 
 module.exports = new TableManager();
