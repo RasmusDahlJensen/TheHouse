@@ -179,8 +179,8 @@ class HighRollGame {
             console.log(`[HIGHROLL_DEBUG] Player ${player.displayName} (ID: ${player.id}) rolled: ${actualRollResult}`);
 
             // Animation Loop (visual flair, doesn't use actualRollResult until the end)
-            const animationFrames = 7; // More frames for a slightly longer animation for 1-100
-            const frameDelay = 1500 / animationFrames; // Adjust total duration as needed
+            const animationFrames = 5; // More frames for a slightly longer animation for 1-100
+            const frameDelay = 500 / animationFrames; // Adjust total duration as needed
             for (let i = 0; i < animationFrames; i++) {
                 const randomSymbolIndex = Math.floor(Math.random() * DICE_ANIMATION_SYMBOLS.length);
                 table.gameState.currentDisplay[player.id] = DICE_ANIMATION_SYMBOLS[randomSymbolIndex];
