@@ -1,46 +1,51 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const { createTableChannelAndRole } = require('../utils/channelUtils');
 const tableManager = require('../models/tableManager');
 const { getContext } = require('../utils/context');
+const lobbyManager = require('../models/lobbyManager');
+const gameManager = require('../utils/gameManager');
 
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('starttable')
-        .setDescription('Start a new game table')
-        .addIntegerOption(option =>
-            option.setName('wager')
-                .setDescription('Wager amount (defaults to 5000)')
-                .setRequired(false)
-        ),
-
-    /**
-     * @param {import('discord.js').ChatInputCommandInteraction} interaction 
-     */
+    // ... (data property) ...
     async execute(interaction) {
         const { user, displayName } = getContext(interaction);
 
         if (tableManager.getTableByUser(user.id)) {
-            return interaction.reply({ content: '❌ You are already in a table. Leave it before starting a new one.', ephemeral: true });
+            return interaction.reply({ content: '❌ You are already in a table...', ephemeral: true });
         }
 
         const wager = interaction.options.getInteger('wager') || 5000;
+        const tableNumericId = tableManager.getNextTableId();
+        const baseTableName = `table-${tableNumericId}`;
+        const displayTableName = `Table ${tableNumericId}`;
 
-        const tableId = tableManager.getNextTableId();
-        const tableName = `table-${tableId}`;
+        try {
+            const { channel, role } = await createTableChannelAndRole(interaction.guild, baseTableName);
 
-        const { channel, role } = await createTableChannelAndRole(interaction.guild, tableName);
+            const newTable = tableManager.createTable({
+                name: baseTableName,
+                displayName: displayTableName,
+                channelId: channel.id,
+                roleId: role.id,
+                hostUserId: user.id,
+                wager: wager,
+            });
 
-        const table = tableManager.createTable({
-            name: tableName,
-            channelId: channel.id,
-            roleId: role.id,
-            hostUserId: user.id,
-            wager
-        });
+            newTable.addPlayer(user, displayName);
+            tableManager.registerUserToTable(user.id, newTable.name);
+            await interaction.member.roles.add(role);
 
-        table.addPlayer(user);
-        await interaction.member.roles.add(role);
+            // Send the initial message using GameManager
+            const initialEmbed = gameManager.buildTableEmbed(newTable);
+            const initialComponents = gameManager.buildTableComponents(newTable);
+            const gameMessage = await channel.send({ embeds: [initialEmbed], components: initialComponents });
+            newTable.setMessageId(gameMessage.id);
 
-        await interaction.reply({ content: `✅ Table **${table.name}** created! Check out <#${channel.id}>`, ephemeral: true });
+            await lobbyManager.refreshLobby(interaction.client);
+
+            await interaction.reply({ content: `✅ Table **${newTable.displayName}** created! Check out <#${channel.id}>`, ephemeral: true });
+
+        } catch (error) {
+        }
     }
 };

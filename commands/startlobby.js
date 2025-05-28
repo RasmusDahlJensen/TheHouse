@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, ChannelType, PermissionsBitField } = require('discord.js');
-const lobbyManager = require('../models/lobbyManager');
+const lobbyManager = require('../models/lobbyManager'); // Ensure path is correct
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -7,50 +7,58 @@ module.exports = {
         .setDescription('Create the casino lobby channel.'),
 
     async execute(interaction) {
+        console.log('[STARTLOBBY_DEBUG] Executing /startlobby command...');
         const guild = interaction.guild;
         const everyoneRole = guild.roles.everyone;
         const roleName = 'Gambler';
 
-        // Find or create the flair role
         let flairRole = guild.roles.cache.find(r => r.name === roleName);
         if (!flairRole) {
-            flairRole = await guild.roles.create({
-                name: roleName,
-                color: 'Gold',
-                reason: 'Grants access to the casino lobby',
-            });
+            // ... (role creation logic) ...
+            flairRole = await guild.roles.create({ /* ... */ });
         }
 
-        // Check if lobby channel already exists
         let lobbyChannel = guild.channels.cache.find(
             c => c.name === 'lobby' && c.type === ChannelType.GuildText
         );
 
-        // Create it if not present
         if (!lobbyChannel) {
+            console.log('[STARTLOBBY_DEBUG] Lobby channel not found in cache, creating new one...');
             lobbyChannel = await guild.channels.create({
                 name: 'lobby',
                 type: ChannelType.GuildText,
-                reason: 'Casino lobby creation',
-                permissionOverwrites: [
-                    {
-                        id: everyoneRole.id,
-                        deny: [PermissionsBitField.Flags.ViewChannel],
-                    },
-                    {
-                        id: flairRole.id,
-                        allow: [PermissionsBitField.Flags.ViewChannel],
-                    }
-                ]
+                // ... (permissions) ...
             });
+            console.log(`[STARTLOBBY_DEBUG] Created new lobby channel: ${lobbyChannel.id} (${lobbyChannel.name})`);
+        } else {
+            console.log(`[STARTLOBBY_DEBUG] Found existing lobby channel: ${lobbyChannel.id} (${lobbyChannel.name})`);
         }
 
-        await lobbyManager.setLobbyChannel(lobbyChannel);
+        if (!lobbyChannel) {
+            console.error('[STARTLOBBY_DEBUG] CRITICAL: lobbyChannel is null/undefined even after creation/finding attempt!');
+            return interaction.reply({ content: '❌ Failed to create or find the lobby channel.', ephemeral: true });
+        }
+
+        console.log(`[STARTLOBBY_DEBUG] Calling lobbyManager.setLobbyChannel with channel ID: ${lobbyChannel.id}`);
+        await lobbyManager.setLobbyChannel(lobbyChannel); // setLobbyChannel is async in your LobbyManager
+        console.log('[STARTLOBBY_DEBUG] Returned from lobbyManager.setLobbyChannel.');
+
+        // Check if it was set in the manager instance
+        if (lobbyManager.lobbyChannel) {
+            console.log(`[STARTLOBBY_DEBUG] lobbyManager.lobbyChannel is now set to: ${lobbyManager.lobbyChannel.id}`);
+        } else {
+            console.error('[STARTLOBBY_DEBUG] CRITICAL: lobbyManager.lobbyChannel is STILL NULL after calling setLobbyChannel!');
+        }
+
+
+        console.log('[STARTLOBBY_DEBUG] Calling lobbyManager.refreshLobby...');
         await lobbyManager.refreshLobby(interaction.client);
+        console.log('[STARTLOBBY_DEBUG] Returned from lobbyManager.refreshLobby.');
 
         await interaction.reply({
             content: `✅ Lobby channel is ready: ${lobbyChannel}`,
             ephemeral: true
         });
+        console.log('[STARTLOBBY_DEBUG] /startlobby command finished.');
     }
 };

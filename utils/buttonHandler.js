@@ -1,165 +1,233 @@
+// utils/buttonHandler.js
+const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const tableManager = require('../models/tableManager');
 const lobbyManager = require('../models/lobbyManager');
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
-const games = require('../data/games');
+const gameManager = require('../utils/gameManager');
+const { createTableChannelAndRole } = require('./channelUtils');
+
+// Helper to fetch the game message (make sure this is robust)
+async function fetchGameMessage(client, table) {
+    if (!table || !table.channelId || !table.messageId) {
+        console.warn(`Table ${table?.name || 'Unknown'} missing channelId or messageId for fetchGameMessage.`);
+        return null;
+    }
+    try {
+        const channel = await client.channels.fetch(table.channelId);
+        if (!channel || !channel.isTextBased()) return null;
+        return await channel.messages.fetch(table.messageId);
+    } catch (error) {
+        console.error(`Error fetching game message for table ${table.name}:`, error.message);
+        if (error.code === 10008 || error.code === 10003) {
+            console.warn(`Message or Channel for table ${table.name} (ID: ${table.messageId}/${table.channelId}) not found.`);
+        }
+        return null;
+    }
+}
 
 
-/**
- * Handle button interactions
- * @param {import('discord.js').ButtonInteraction} interaction 
- */
+// Helper to update the game message using GameManager
+async function updateTableMessage(client, table) {
+    if (!table) {
+        console.warn("updateTableMessage called with null table.");
+        return;
+    }
+    const gameMessage = await fetchGameMessage(client, table);
+    if (gameMessage) {
+        const embed = gameManager.buildTableEmbed(table);
+        const components = gameManager.buildTableComponents(table);
+        try {
+            await gameMessage.edit({ embeds: [embed], components: components });
+        } catch (err) {
+            console.error(`Error editing game message ${gameMessage.id} for table ${table.name}:`, err);
+            if (err.code === 10008) {
+                console.warn(`Game message ${gameMessage.id} for table ${table.name} was deleted. Clearing stored messageId.`);
+                table.setMessageId(null);
+            }
+        }
+    } else {
+        console.warn(`Could not update message for table ${table.name}, game message not found. Attempting to resend.`);
+        const channel = await client.channels.fetch(table.channelId).catch(() => null);
+        if (channel && table.channelId) {
+            console.log(`Attempting to resend message for table ${table.name} in channel ${channel.id}`);
+            const embed = gameManager.buildTableEmbed(table);
+            const components = gameManager.buildTableComponents(table);
+            try {
+                const newMessage = await channel.send({ embeds: [embed], components });
+                table.setMessageId(newMessage.id);
+                console.log(`Resent message for table ${table.name}, new ID: ${newMessage.id}`);
+            } catch (sendError) {
+                console.error(`Failed to resend message for table ${table.name}:`, sendError);
+            }
+        }
+    }
+}
+
+
 async function handleButton(interaction) {
-    const [action, tableName] = interaction.customId.split('-');
+    console.log(`Button Interaction: ${interaction.customId} by ${interaction.user.tag}`);
+
+    const customIdParts = interaction.customId.split('-');
+    const action = customIdParts[0];
     const user = interaction.user;
+    const client = interaction.client;
 
+    let tableNameForAction;
+    let gameIdForAction;
+    let gameSpecificAction;
+
+    // --- Custom ID Parsing ---
     if (action === 'create') {
-        const tableName = `Table ${tableManager.getNextTableId()}`;
+    } else if (action === 'selectgame') {
+        gameIdForAction = customIdParts[1];
+        tableNameForAction = customIdParts.slice(2).join('-');
+    } else if (action === 'gameaction') {
+        gameIdForAction = customIdParts[1];
+        gameSpecificAction = customIdParts[2];
+        tableNameForAction = customIdParts.slice(3).join('-');
+    } else if (action === 'changegame') {
+        tableNameForAction = customIdParts.slice(1).join('-');
+    } else {
+        tableNameForAction = customIdParts.slice(1).join('-');
+    }
 
-        const categoryId = process.env.TABLE_CATEGORY_ID;
+    // --- Action: Create Table ---
+    if (action === 'create') {
+        if (tableManager.getTableByUser(user.id)) {
+            return interaction.reply({ content: '❌ You are already in a table. Leave it before starting a new one.', ephemeral: true });
+        }
+        const tableNumericId = tableManager.getNextTableId();
+        const baseTableName = `table-${tableNumericId}`;
+        const displayTableName = `Table ${tableNumericId}`;
 
-        // Check if role already exists
-        let role = interaction.guild.roles.cache.find(r => r.name === tableName);
-
-        if (!role) {
-            // Create role if missing
-            role = await interaction.guild.roles.create({
-                name: tableName,
-                color: 'Random',
-                reason: 'Table access role',
+        try {
+            const { channel, role } = await createTableChannelAndRole(interaction.guild, baseTableName);
+            const newTable = tableManager.createTable({
+                name: baseTableName, displayName: displayTableName, channelId: channel.id, roleId: role.id, hostUserId: user.id, wager: 5000,
             });
+            newTable.addPlayer(user, interaction.member.displayName || user.username);
+            tableManager.registerUserToTable(user.id, newTable.name);
+            await interaction.member.roles.add(role);
+
+            const initialEmbed = gameManager.buildTableEmbed(newTable);
+            const initialComponents = gameManager.buildTableComponents(newTable);
+            const gameMsg = await channel.send({ embeds: [initialEmbed], components: initialComponents });
+            newTable.setMessageId(gameMsg.id);
+
+            await lobbyManager.refreshLobby(client);
+            return interaction.reply({ content: `✅ Created table **${newTable.displayName}**! <#${channel.id}>`, ephemeral: true });
+        } catch (error) {
+            console.error("Error creating table via button:", error);
+            return interaction.reply({ content: `❌ Error creating table: ${error.message || 'An unexpected error occurred.'}`, ephemeral: true });
         }
+    }
 
-        // Assign role to user
-        await interaction.member.roles.add(role);
+    // --- Fetch Table for other actions ---
+    const table = tableNameForAction ? tableManager.getTableByName(tableNameForAction) : tableManager.getTableByUser(user.id);
 
-        // Create channel
-        const newChannel = await interaction.guild.channels.create({
-            name: tableName.toLowerCase().replace(/\s+/g, '-'),
-            type: 0,
-            parent: categoryId,
-            permissionOverwrites: [
-                {
-                    id: interaction.guild.roles.everyone.id,
-                    deny: ['ViewChannel'],
-                },
-                {
-                    id: role.id,
-                    allow: ['ViewChannel'],
+    if (!table) {
+        return interaction.reply({ content: '❌ Table context not found. The table might have been closed or an error occurred.', ephemeral: true });
+    }
+
+    const isPlayerAtThisTable = table.players.some(p => p.id === user.id);
+    if (action !== 'join' && !isPlayerAtThisTable) {
+        return interaction.reply({ content: '❌ You are not currently a player at this table.', ephemeral: true });
+    }
+
+    // --- Handle Actions ---
+    let interactionHandled = false;
+
+    try {
+        if (action === 'join') {
+            if (tableManager.getTableByUser(user.id)) {
+                await interaction.reply({ content: '❌ You are already in a table!', ephemeral: true });
+                interactionHandled = true;
+            } else if (table.players.some(p => p.id === user.id)) {
+                await interaction.reply({ content: '❌ You are already in this specific table!', ephemeral: true });
+                interactionHandled = true;
+            } else {
+                table.addPlayer(user, interaction.member.displayName || user.username);
+                tableManager.registerUserToTable(user.id, table.name);
+                const role = interaction.guild.roles.cache.get(table.roleId);
+                if (role) await interaction.member.roles.add(role).catch(console.error);
+                await interaction.deferUpdate().catch(console.error);
+                interactionHandled = true;
+                await lobbyManager.refreshLobby(client);
+            }
+        } else if (action === 'leave') {
+            table.removePlayer(user.id);
+            tableManager.unregisterUser(user.id);
+            const role = interaction.guild.roles.cache.get(table.roleId);
+            if (role && interaction.member.roles.cache.has(role.id)) {
+                await interaction.member.roles.remove(role).catch(console.error);
+            }
+
+            if (table.isEmpty()) {
+                await interaction.reply({ content: `👋 You left ${table.displayName}. The table is now empty and has been closed.`, ephemeral: true });
+                interactionHandled = true;
+
+                const channel = await client.channels.fetch(table.channelId).catch(() => null);
+                if (channel) {
+                    await channel.delete(`Table ${table.displayName} empty.`).catch(err => {
+                        if (err.code !== 10003) console.error(`Error deleting channel ${table.channelId}:`, err);
+                    });
                 }
-            ],
-        });
+                if (role) {
+                    await role.delete(`Table ${table.displayName} role no longer needed.`).catch(err => {
+                        if (err.code !== 10007) console.error(`Error deleting role ${role.id}:`, err);
+                    });
+                }
+                tableManager.deleteTable(table.name);
+                await lobbyManager.refreshLobby(client);
+            } else {
+                await interaction.deferUpdate().catch(console.error);
+                interactionHandled = true;
+                await lobbyManager.refreshLobby(client);
+            }
+        } else if (action === 'selectgame') {
+            if (gameManager.initializeTableForGame(table, gameIdForAction)) {
+                await interaction.deferUpdate().catch(console.error);
+                interactionHandled = true;
+            } else {
+                await interaction.reply({ content: '❌ Invalid game selected or an error occurred during initialization.', ephemeral: true });
+                interactionHandled = true;
+            }
+        } else if (action === 'changegame') {
+            table.clearGame();
+            await interaction.deferUpdate().catch(console.error);
+            interactionHandled = true;
+        } else if (action === 'gameaction') {
+            if (table.currentGameId !== gameIdForAction) {
+                await interaction.reply({ content: '❌ This action is for a different game than what is currently active.', ephemeral: true });
+                interactionHandled = true;
+            } else {
+                await gameManager.dispatchGameAction(table, gameSpecificAction, interaction, client);
+                interactionHandled = interaction.replied || interaction.deferred;
+            }
+        }
 
-        // Create table object
-        const newTable = tableManager.createTable({
-            name: tableName,
-            channelId: newChannel.id,
-            roleId: role.id,
-            hostUserId: user.id,
-            wager: 5000
-        });
+        // --- Update Table Message (if not a terminal action like table deletion) ---
+        if (interactionHandled && interaction.deferred && action !== 'leave' || (action === 'leave' && !table.isEmpty())) {
+            await updateTableMessage(client, table);
+        } else if (action === 'leave' && table.isEmpty()) {
+        }
 
-        // Link user to table
-        tableManager.registerUserToTable(user.id, newTable.name);
-        newTable.addPlayer(user);
 
-        // Fetch the new channel
-        const tableChannel = await interaction.guild.channels.fetch(newChannel.id);
-
-        // Build embed message
-        const gameList = games.map(g => `• **${g.name}** – ${g.description}`).join('\n');
-
-        const embed = new EmbedBuilder()
-            .setTitle(`🎰 Welcome to ${tableName}`)
-            .setDescription(`**Choose a game to begin:**\n${gameList}`)
-            .setFooter({ text: 'Click a game button below to start!' })
-            .setColor(0xFFD700);
-
-        // Game buttons row
-        const gameButtons = new ActionRowBuilder();
-        games.forEach(game => {
-            gameButtons.addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`game-${game.id}-${newTable.name}`)
-                    .setLabel(game.name)
-                    .setStyle(ButtonStyle.Primary)
-            );
-        });
-
-        // Leave table button row
-        const leaveButtonRow = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId(`leave-${newTable.name}`)
-                .setLabel('🏃 Leave Table')
-                .setStyle(ButtonStyle.Danger)
-        );
-
-        // Send the initial message into the table channel
-        await tableChannel.send({
-            embeds: [embed],
-            components: [gameButtons, leaveButtonRow]
-        });
-
-        await lobbyManager.refreshLobby(interaction.client);
-
-        return interaction.reply({
-            content: `✅ Created new table: **${newTable.name}** (Channel: <#${newChannel.id}>)`,
-            ephemeral: true
-        });
+    } catch (error) {
+        console.error(`Error in handleButton for action "${action}", customId "${interaction.customId}":`, error);
+        if (!interactionHandled) {
+            try {
+                await interaction.reply({ content: '❌ An unexpected error occurred while processing your action.', ephemeral: true });
+            } catch (replyError) {
+                console.error("Failed to send error reply to interaction:", replyError);
+            }
+            interactionHandled = true;
+        }
     }
 
-
-    if (action === 'join') {
-        const table = tableManager.getTableByName(tableName);
-        if (!table) {
-            return interaction.reply({ content: '❌ Table not found.', ephemeral: true });
-        }
-
-        const alreadyInTable = table.players.some(p => p.user.id === user.id);
-        if (alreadyInTable) {
-            return interaction.reply({ content: '❌ You are already in this table.', ephemeral: true });
-        }
-
-        table.addPlayer(user);
-        tableManager.registerUserToTable(user.id, table.name);
-
-        await lobbyManager.refreshLobby(interaction.client);
-        return interaction.reply({ content: `✅ You joined **${table.name}**!`, ephemeral: true });
+    if (!interactionHandled && !interaction.replied && !interaction.deferred) {
+        console.warn(`Interaction ${interaction.customId} by ${user.tag} reached end of handler without reply/defer.`);
+        await interaction.reply({ content: '⚙️ Your action was acknowledged.', ephemeral: true }).catch(console.error);
     }
-
-    if (action === 'leave') {
-        const table = tableManager.getTableByUser(user.id);
-        if (!table) {
-            return interaction.reply({ content: '❌ You are not in any table.', ephemeral: true });
-        }
-
-        const member = interaction.member;
-        const userId = user.id;
-
-        const wasInTable = table.players.some(p => p.user.id === userId);
-        if (!wasInTable) {
-            return interaction.reply({ content: '❌ You are not in this table.', ephemeral: true });
-        }
-
-        table.removePlayer(userId);
-        tableManager.unregisterUser(userId);
-
-        const role = interaction.guild.roles.cache.get(table.roleId);
-        if (role && member.roles.cache.has(role.id)) {
-            await member.roles.remove(role);
-        }
-
-        if (table.isEmpty()) {
-            const channel = await interaction.client.channels.fetch(table.channelId);
-            await channel.delete();
-            if (role) await role.delete();
-            tableManager.deleteTable(table.name);
-            return;
-        }
-
-        await interaction.reply({ content: `👋 You left **${table.name}**.`, ephemeral: true });
-    }
-
-
 }
 
 module.exports = { handleButton };
