@@ -4,7 +4,7 @@ const { REST, Routes } = require('discord.js');
 
 /**
  * Loads all slash commands and registers them with Discord API
- * @param {import('discord.js').Client} client 
+ * @param {import('discord.js').Client} client
  */
 async function loadCommands(client) {
     const commandFiles = fs.readdirSync(path.join(__dirname, '../commands')).filter(file => file.endsWith('.js'));
@@ -19,18 +19,28 @@ async function loadCommands(client) {
     }
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    const clientId = process.env.CLIENT_ID;
+    const guildId = process.env.GUILD_ID;
+
     console.log('Registering commands:');
     commands.forEach(cmd => console.log(`- /${cmd.name}`));
 
-
     try {
-        await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID),
-            { body: commands }
-        );
-        console.log('✅ Slash commands registered.');
+        if (guildId) {
+            await rest.put(
+                Routes.applicationGuildCommands(clientId, guildId),
+                { body: commands }
+            );
+            console.log('ƒo. Slash commands registered to guild:', guildId);
+        } else {
+            await rest.put(
+                Routes.applicationCommands(clientId),
+                { body: commands }
+            );
+            console.log('ƒo. Slash commands registered globally (may take up to an hour to propagate).');
+        }
     } catch (error) {
-        console.error('❌ Error registering commands:', error);
+        console.error('ƒ?O Error registering commands:', error);
     }
 }
 
